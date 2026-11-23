@@ -336,7 +336,7 @@ public sealed class LauncherForm : Form
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            var state = Enabled ? (Capture ? PushButtonState.Pressed : PushButtonState.Normal) : PushButtonState.Disabled;
+            var state = !Enabled ? ButtonState.Inactive : Capture ? ButtonState.Pushed : ButtonState.Normal;
             ControlPaint.DrawButton(e.Graphics, ClientRectangle, state);
             var titleRect = new Rectangle(2, 5, ClientSize.Width - 4, 18);
             var statusRect = new Rectangle(2, 24, ClientSize.Width - 4, ClientSize.Height - 26);
