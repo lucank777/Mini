@@ -65,9 +65,8 @@ public sealed class AppSettings
                     Enabled = number <= 6,
                     IsStallSlot = number == 7,
                     StallSlotNumber = number == 7 ? 7 : 0,
-                    DisplayName = number == 7 ? "商人擺攤" : group == 2 && number <= 5
-                        ? new[] { "預設無關", "老鷹", "封天", "豐珠", "魔丸" }[number - 1]
-                        : ""
+                    DisplayName = "",
+                    CharacterName = ""
                 });
             }
             else if (number <= 6)
@@ -76,6 +75,8 @@ public sealed class AppSettings
                 existing.Enabled = true;
                 existing.IsStallSlot = false;
                 existing.StallSlotNumber = 0;
+                if (existing.DisplayName is "預設無關" or "老鷹" or "封天" or "豐珠" or "魔丸")
+                    existing.DisplayName = "";
             }
             else
             {
@@ -84,6 +85,8 @@ public sealed class AppSettings
                 // Clear legacy placeholder labels; slot status and detected character name are shown by the launcher.
                 if (existing.DisplayName is "預設無關" or "老鷹" or "封天" or "豐珠" or "魔丸" or "商人擺攤")
                     existing.DisplayName = "";
+            }
+            existing.CharacterName ??= "";
             }
         }
         Slots = Slots.Where(x => x.Group >= 1 && x.Group <= 3 && x.Number >= 1 && x.Number <= 7)
