@@ -87,7 +87,6 @@ public sealed class AppSettings
                     existing.DisplayName = "";
             }
             existing.CharacterName ??= "";
-            }
         }
         Slots = Slots.Where(x => x.Group >= 1 && x.Group <= 3 && x.Number >= 1 && x.Number <= 7)
             .OrderBy(x => x.Group).ThenBy(x => x.Number).ToList();
