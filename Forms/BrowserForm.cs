@@ -160,7 +160,7 @@ public sealed class BrowserForm : Form
 
         try
         {
-            var raw = await _web.ExecuteScriptAsync(script);
+            var raw = await _web.CoreWebView2.ExecuteScriptAsync(script);
             var name = JsonSerializer.Deserialize<string>(raw)?.Trim() ?? "";
             if (string.IsNullOrWhiteSpace(name)) return;
             _characterTimer.Stop();
