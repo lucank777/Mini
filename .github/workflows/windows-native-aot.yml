@@ -1,4 +1,4 @@
-name: Build Windows x64 Native AOT
+name: Build Windows x64 Single File
 
 on:
   workflow_dispatch:
@@ -13,24 +13,26 @@ jobs:
     runs-on: windows-2022
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up .NET 10 SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
 
       - name: Restore dependencies
         run: dotnet restore .\MiniGameBrowser.Rebuild.csproj
 
-      - name: Publish Windows x64 Native AOT
+      - name: Publish Windows x64 self-contained single file
         run: >-
           dotnet publish .\MiniGameBrowser.Rebuild.csproj
           -c Release
           -r win-x64
           --self-contained true
-          -p:PublishAot=true
-          -p:StripSymbols=true
+          -p:PublishAot=false
+          -p:PublishTrimmed=false
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
           -o .\publish
 
       - name: Verify executable exists
