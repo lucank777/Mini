@@ -124,12 +124,12 @@ public sealed class LauncherForm : Form
         outer.Controls.Add(merchant, 0, 0);
 
         var row = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Margin = new Padding(0) };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 42));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 35));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 78));
         row.Controls.Add(new Label
         {
-            Text = GroupNames[index] + " 組",
+            Text = GroupNames[index],
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
             AutoEllipsis = false,
