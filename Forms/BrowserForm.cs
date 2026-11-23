@@ -23,6 +23,7 @@ public sealed class BrowserForm : Form
     private readonly Label _status = new() { AutoSize = false, Height = 22, Dock = DockStyle.Bottom, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(8, 0, 0, 0) };
     private bool _ready;
     private readonly int _group;
+    private readonly int _slotNumber;
     private readonly Action<string>? _onCharacterName;
     private readonly System.Windows.Forms.Timer _characterTimer = new() { Interval = 1500 };
     private int _characterChecks;
@@ -30,6 +31,7 @@ public sealed class BrowserForm : Form
     public BrowserForm(AppState state, JsonStore store, string? startUrl = null, int group = 1, int slotNumber = 1, Action<string>? onCharacterName = null)
     {
         _group = Math.Clamp(group, 1, 3);
+        _slotNumber = Math.Clamp(slotNumber, 1, 7);
         _onCharacterName = onCharacterName;
         _state = state; _store = store;
         Text = $"極簡遊戲瀏覽器 - {_group} 組"; Width = 1180; Height = 800; MinimumSize = new Size(720, 480);
@@ -66,7 +68,7 @@ public sealed class BrowserForm : Form
     {
         try
         {
-            var env = await CoreWebView2Environment.CreateAsync(null, AppPaths.GetGroupWebViewDataFolder(_group));
+            var env = await CoreWebView2Environment.CreateAsync(null, AppPaths.GetSlotWebViewDataFolder(_group, _slotNumber));
             await _web.EnsureCoreWebView2Async(env);
             _ready = true;
             WebViewSecurity.Attach(_web.CoreWebView2);
