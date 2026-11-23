@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using MiniGameBrowser.Core;
@@ -22,10 +23,14 @@ public sealed class BrowserForm : Form
     private readonly Label _status = new() { AutoSize = false, Height = 22, Dock = DockStyle.Bottom, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(8, 0, 0, 0) };
     private bool _ready;
     private readonly int _group;
+    private readonly Action<string>? _onCharacterName;
+    private readonly System.Windows.Forms.Timer _characterTimer = new() { Interval = 1500 };
+    private int _characterChecks;
 
-    public BrowserForm(AppState state, JsonStore store, string? startUrl = null, int group = 1)
+    public BrowserForm(AppState state, JsonStore store, string? startUrl = null, int group = 1, int slotNumber = 1, Action<string>? onCharacterName = null)
     {
         _group = Math.Clamp(group, 1, 3);
+        _onCharacterName = onCharacterName;
         _state = state; _store = store;
         Text = $"極簡遊戲瀏覽器 - {_group} 組"; Width = 1180; Height = 800; MinimumSize = new Size(720, 480);
         StartPosition = FormStartPosition.CenterScreen;
@@ -35,7 +40,8 @@ public sealed class BrowserForm : Form
         _toolbar.Dock = DockStyle.Top;
         _address.Text = startUrl ?? _state.Settings.SelectedUrl;
         Shown += async (_, _) => await InitializeWebViewAsync();
-        FormClosing += (_, _) => SaveWindowState();
+        FormClosing += (_, _) => { _characterTimer.Stop(); _characterTimer.Dispose(); SaveWindowState(); };
+        _characterTimer.Tick += async (_, _) => await RefreshCharacterNameAsync();
     }
 
     private void BuildToolbar()
@@ -70,6 +76,14 @@ public sealed class BrowserForm : Form
             {
                 _status.Text = e.IsSuccess ? "完成" : $"載入失敗：{e.WebErrorStatus}";
                 _back.Enabled = _web.CoreWebView2.CanGoBack; _forward.Enabled = _web.CoreWebView2.CanGoForward;
+                if (e.IsSuccess && IsTrustedCharacterPage())
+                {
+                    _characterChecks = 0;
+                    _characterTimer.Stop();
+                    _characterTimer.Start();
+                    _ = RefreshCharacterNameAsync();
+                }
+                else _characterTimer.Stop();
             };
             _web.CoreWebView2.NewWindowRequested += (_, e) =>
             {
@@ -101,6 +115,58 @@ public sealed class BrowserForm : Form
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, "瀏覽器初始化失敗", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+
+    private bool IsTrustedCharacterPage()
+    {
+        if (!_ready || !Uri.TryCreate(_web.CoreWebView2.Source, UriKind.Absolute, out var uri))
+            return false;
+        return uri.Scheme == Uri.UriSchemeHttps
+            && uri.Host.Equals("ro-idle.app", StringComparison.OrdinalIgnoreCase)
+            && uri.IsDefaultPort;
+    }
+
+    private async Task RefreshCharacterNameAsync()
+    {
+        if (!_ready || IsDisposed || !IsTrustedCharacterPage())
+        {
+            _characterTimer.Stop();
+            return;
+        }
+        if (++_characterChecks > 30)
+        {
+            _characterTimer.Stop();
+            return;
+        }
+
+        const string script = @"(() => {
+            const text = document.body && document.body.innerText ? document.body.innerText : '';
+            const lines = text.split(/\\r?\\n/).map(x => x.trim()).filter(Boolean);
+            const index = lines.findIndex(x => /Base\\s*Lv/i.test(x));
+            if (index < 0) return '';
+            const candidates = [lines[index - 1], lines[index + 1], lines[index + 2], lines[index + 3]];
+            for (const value of candidates) {
+                if (!value) continue;
+                if (/Base\\s*Lv|Job\\s*Lv|Class|職業|等級|\\d+\\s*\\/?\\s*\\d*/i.test(value)) continue;
+                if (value.length > 24) continue;
+                return value;
+            }
+            return '';
+        })();";
+
+        try
+        {
+            var raw = await _web.ExecuteScriptAsync(script);
+            var name = JsonSerializer.Deserialize<string>(raw)?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(name)) return;
+            _characterTimer.Stop();
+            _onCharacterName?.Invoke(name);
+        }
+        catch
+        {
+            // The page may still be rendering; retry on the next timer tick.
         }
     }
 
