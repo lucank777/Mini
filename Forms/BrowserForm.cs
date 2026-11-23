@@ -21,11 +21,13 @@ public sealed class BrowserForm : Form
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill };
     private readonly Label _status = new() { AutoSize = false, Height = 22, Dock = DockStyle.Bottom, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(8, 0, 0, 0) };
     private bool _ready;
+    private readonly int _group;
 
-    public BrowserForm(AppState state, JsonStore store, string? startUrl = null)
+    public BrowserForm(AppState state, JsonStore store, string? startUrl = null, int group = 1)
     {
+        _group = Math.Clamp(group, 1, 3);
         _state = state; _store = store;
-        Text = "MiniGameBrowser"; Width = 1180; Height = 800; MinimumSize = new Size(720, 480);
+        Text = $"極簡遊戲瀏覽器 - {_group} 組"; Width = 1180; Height = 800; MinimumSize = new Size(720, 480);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(25, 27, 31); ForeColor = Color.White;
         BuildToolbar();
@@ -58,7 +60,7 @@ public sealed class BrowserForm : Form
     {
         try
         {
-            var env = await CoreWebView2Environment.CreateAsync(null, AppPaths.WebViewDataFolder);
+            var env = await CoreWebView2Environment.CreateAsync(null, AppPaths.GetGroupWebViewDataFolder(_group));
             await _web.EnsureCoreWebView2Async(env);
             _ready = true;
             WebViewSecurity.Attach(_web.CoreWebView2);

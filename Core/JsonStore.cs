@@ -35,6 +35,7 @@ public sealed class JsonStore
                 }
             }
             state.Settings ??= new AppSettings();
+            state.Settings.EnsureThreeGroupsSevenSlots();
             state.Favorites ??= [];
             state.Windows ??= [];
             return state;

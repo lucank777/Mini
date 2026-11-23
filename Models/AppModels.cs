@@ -22,20 +22,72 @@ public sealed class AppSettings
     public bool BlockPopups { get; set; }
     public bool DarkMode { get; set; } = true;
     public string CharacterNameText { get; set; } = "";
-    public int BatchWindowLimit { get; set; } = 6;
-    // Keep the old four-window default; slots 5 and 6 are opt-in.
+    public int BatchWindowLimit { get; set; } = 21;
+    // Three groups, six regular slots plus one optional merchant/stall slot per group.
     public List<SlotInfo> Slots { get; set; } = CreateDefaultSlots();
     [JsonExtensionData] public Dictionary<string, JsonElement>? UnknownFields { get; set; }
 
-    private static List<SlotInfo> CreateDefaultSlots() =>
-    [
-        new() { Group = 1, Number = 1, Enabled = true },
-        new() { Group = 1, Number = 2, Enabled = true },
-        new() { Group = 1, Number = 3, Enabled = true },
-        new() { Group = 1, Number = 4, Enabled = true },
-        new() { Group = 1, Number = 5, Enabled = false },
-        new() { Group = 1, Number = 6, Enabled = false }
-    ];
+    public static List<SlotInfo> CreateDefaultSlots()
+    {
+        var slots = new List<SlotInfo>();
+        for (int group = 1; group <= 3; group++)
+        {
+            for (int number = 1; number <= 7; number++)
+            {
+                slots.Add(new SlotInfo
+                {
+                    Group = group,
+                    Number = number,
+                    Enabled = number <= 6,
+                    IsStallSlot = number == 7,
+                    StallSlotNumber = number == 7 ? 7 : 0,
+                    DisplayName = number == 7 ? "商人擺攤" : group == 2 && number <= 5
+                        ? new[] { "預設無關", "老鷹", "封天", "豐珠", "魔丸" }[number - 1]
+                        : ""
+                });
+            }
+        }
+        return slots;
+    }
+
+    public void EnsureThreeGroupsSevenSlots()
+    {
+        Slots ??= [];
+        for (int group = 1; group <= 3; group++)
+        for (int number = 1; number <= 7; number++)
+        {
+            var existing = Slots.FirstOrDefault(x => x.Group == group && x.Number == number);
+            if (existing is null)
+            {
+                Slots.Add(new SlotInfo
+                {
+                    Group = group,
+                    Number = number,
+                    Enabled = number <= 6,
+                    IsStallSlot = number == 7,
+                    StallSlotNumber = number == 7 ? 7 : 0,
+                    DisplayName = number == 7 ? "商人擺攤" : group == 2 && number <= 5
+                        ? new[] { "預設無關", "老鷹", "封天", "豐珠", "魔丸" }[number - 1]
+                        : ""
+                });
+            }
+            else if (number <= 6)
+            {
+                // All six regular account slots are always included in their group.
+                existing.Enabled = true;
+                existing.IsStallSlot = false;
+                existing.StallSlotNumber = 0;
+            }
+            else
+            {
+                existing.IsStallSlot = true;
+                existing.StallSlotNumber = 7;
+                if (string.IsNullOrWhiteSpace(existing.DisplayName)) existing.DisplayName = "商人擺攤";
+            }
+        }
+        Slots = Slots.Where(x => x.Group >= 1 && x.Group <= 3 && x.Number >= 1 && x.Number <= 7)
+            .OrderBy(x => x.Group).ThenBy(x => x.Number).ToList();
+    }
 }
 
 public sealed class FavoriteItem
@@ -62,6 +114,7 @@ public sealed class SlotInfo
     public bool Enabled { get; set; } = true;
     public bool IsStallSlot { get; set; }
     public int StallSlotNumber { get; set; }
+    public string DisplayName { get; set; } = "";
     public string Url { get; set; } = "https://ro-idle.app/";
     public string SlotId => $"{Group}:{Number}";
 }

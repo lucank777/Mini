@@ -7,6 +7,7 @@ public static class AppPaths
     public static string SettingsFile => Path.Combine(Root, "settings.json");
     public static string FavoritesFile => Path.Combine(Root, "favorites.json");
     public static string WebViewDataFolder => Path.Combine(Root, "WebView2");
+    public static string GetGroupWebViewDataFolder(int group) => Path.Combine(ProfilesRoot, $"Group-{group}");
 
     public static void Initialize()
     {

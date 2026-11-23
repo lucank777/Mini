@@ -1,33 +1,20 @@
-# MiniGameBrowser 重製專案
+# 極簡遊戲瀏覽器（原版三組介面／六帳號＋商人擺攤）
 
-## 建置環境
-- Windows 10 x64
-- .NET 10 SDK x64
-- Visual C++ Build Tools（MSVC x64/x86 build tools 與 Windows SDK；Native AOT 必需）
-- Microsoft Edge WebView2 Runtime（執行程式時必需）
+本版本以使用者提供的原版啟動器畫面為基準，保留 A／B／C 三組排列、每組上方的商人視窗勾選框、每組開啟按鈕及底部全部開啟按鈕。
 
-## 一鍵編譯
-在 Windows 上解壓縮整個資料夾，雙擊 `一鍵編譯.bat`（僅供已安裝本機建置環境者使用）。成功後執行檔會輸出至 `publish\MiniGameBrowser.exe`。
+## 介面與帳號規則
 
-也可以在 PowerShell 專案根目錄執行：
+- A、B、C 三組，每組有六個固定一般帳號槽位：A1～A6、B1～B6、C1～C6，共 18 個一般帳號槽位。
+- 每組另有一個隱藏的第七槽商人擺攤視窗：A7、B7、C7。每組上方的「開啟第 7 個商人視窗」勾選框控制該組商人視窗是否參與批次開啟。
+- 「開啟 A 組／B 組／C 組」會依序開啟該組 1～6 號；若該組商人勾選框已勾選，再接著開啟該組第 7 號。
+- 「全部開啟」依 A、B、C 順序開啟三組全部六個一般帳號；各組第七個商人視窗依該組勾選狀態決定是否開啟。
+- 最多可同時開啟 21 個視窗（18 個一般視窗＋3 個選擇性商人視窗）。
+- 右鍵點擊一般帳號按鈕可編輯或清除顯示名稱。
+- 同一組七個視窗共用 WebView2 登入資料；A、B、C 三組各自使用獨立資料目錄，登入狀態互相隔離。
+- 初始顯示名稱沿用原版畫面中 B1～B5 的文字；可透過右鍵選單修改。
 
-```powershell
-dotnet restore .\MiniGameBrowser.Rebuild.csproj
-dotnet publish .\MiniGameBrowser.Rebuild.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:StripSymbols=true -o .\publish
-```
+## 雲端編譯
 
-若 Native AOT 發佈失敗，請確認已安裝 Visual C++ Build Tools 的 MSVC x64/x86 工具與 Windows 10/11 SDK。此專案目前尚未在 Windows 實機完成建置及執行測試。
+GitHub Actions 使用 Windows 2022 runner，產生 Windows x64 自包含單檔。此方案不是 Native AOT；Windows Forms 發布時關閉 trimming。使用者電腦不需要安裝 .NET SDK，但仍需要 Microsoft Edge WebView2 Runtime。
 
-## 不想安裝本機開發環境？
-
-請依照 [`CLOUD-BUILD-README.md`](CLOUD-BUILD-README.md) 使用 GitHub Actions 雲端編譯。
-
-## 功能範圍
-- WinForms + WebView2 極簡瀏覽器
-- 啟動器、收藏管理、彈出視窗
-- 群組 / Slot 編輯與批次開啟（最多 6 個）
-- 預設啟用前 4 個 Slot，第 5、6 個預設關閉
-- 設定與收藏儲存於 `%LOCALAPPDATA%\MiniGameBrowser-Rebuild\`
-
-## 注意
-這是依原始 EXE 可確認線索所製作的重建版本，不代表已完整還原原始程式的所有內部行為。WebView2 Runtime 仍需安裝於使用者電腦。
+工作流程：`.github/workflows/windows-native-aot.yml`

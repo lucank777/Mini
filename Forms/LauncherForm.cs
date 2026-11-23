@@ -3,19 +3,20 @@ using MiniGameBrowser.Models;
 
 namespace MiniGameBrowser.Forms;
 
+/// <summary>Original-style A/B/C launcher with six regular slots and one optional merchant slot per group.</summary>
 public sealed class LauncherForm : Form
 {
     private readonly AppState _state;
     private readonly JsonStore _store;
-    private readonly TextBox _startUrl = new();
-    private readonly DataGridView _slotGrid = new();
-    private readonly CheckBox _blockPopups = new() { Text = "封鎖網站彈出視窗", AutoSize = true };
-    private readonly CheckBox _askDownloads = new() { Text = "下載前詢問", AutoSize = true, Checked = true };
+    private readonly CheckBox[] _merchantChecks = new CheckBox[3];
+    private readonly Button[,] _slotButtons = new Button[3, 6];
+    private readonly Button[] _groupButtons = new Button[3];
+    private readonly Label _countLabel = new() { AutoSize = true, ForeColor = Color.SteelBlue, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly Dictionary<string, Form> _openForms = new();
+    private static readonly string[] GroupNames = ["A", "B", "C"];
 
     public LauncherForm() : this(LoadInitialState()) { }
-
     private LauncherForm((AppState State, JsonStore Store) initial) : this(initial.State, initial.Store) { }
-
     private static (AppState State, JsonStore Store) LoadInitialState()
     {
         var store = new JsonStore();
@@ -26,177 +27,261 @@ public sealed class LauncherForm : Form
     {
         _state = state;
         _store = store;
-        Text = "MiniGameBrowser — 啟動器";
-        Width = 900; Height = 650; MinimumSize = new Size(760, 520);
+        _state.Settings.EnsureThreeGroupsSevenSlots();
+        Text = "極簡遊戲瀏覽器 v0.4.2（分享版）";
+        ClientSize = new Size(584, 379);
+        MinimumSize = new Size(584, 379);
+        MaximumSize = new Size(584, 379);
+        FormBorderStyle = FormBorderStyle.FixedSingle;
+        MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        BackColor = Color.FromArgb(25, 27, 31);
-        ForeColor = Color.White;
-        // Migrate the legacy fifth-window toggle into the explicit Slot list.
-        if (_state.Settings.OpenFifthWindow)
-        {
-            var fifth = _state.Settings.Slots.FirstOrDefault(x => x.Group == 1 && x.Number == 5);
-            if (fifth is not null) fifth.Enabled = true;
-        }
+        Font = new Font("Microsoft JhengHei UI", 9F);
+        BackColor = SystemColors.Control;
+        ForeColor = SystemColors.ControlText;
         BuildUi();
-        LoadSlots();
+        RefreshButtons();
     }
 
     private void BuildUi()
     {
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), ColumnCount = 1, RowCount = 5 };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(8, 7, 8, 5),
+            ColumnCount = 1,
+            RowCount = 4,
+            BackColor = SystemColors.Control
+        };
+        for (int i = 0; i < 3; i++) root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
-        var heading = new Label { Text = "MiniGameBrowser　群組 / Slot 啟動器", Font = new Font("Segoe UI", 18, FontStyle.Bold), Dock = DockStyle.Fill, ForeColor = Color.White };
-        root.Controls.Add(heading, 0, 0);
 
-        var urlPanel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2 };
-        urlPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
-        urlPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        urlPanel.Controls.Add(new Label { Text = "預設網址", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = Color.Gainsboro }, 0, 0);
-        _startUrl.Dock = DockStyle.Fill; _startUrl.Text = _state.Settings.StartUrl;
-        urlPanel.Controls.Add(_startUrl, 1, 0);
-        root.Controls.Add(urlPanel, 0, 1);
+        for (int group = 1; group <= 3; group++)
+            root.Controls.Add(BuildGroupRow(group), 0, group - 1);
 
-        ConfigureGrid();
-        root.Controls.Add(_slotGrid, 0, 2);
-        var options = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
-        _blockPopups.Checked = _state.Settings.BlockPopups;
-        _askDownloads.Checked = _state.Settings.AskBeforeDownload;
-        options.Controls.Add(_blockPopups); options.Controls.Add(_askDownloads);
-        options.Controls.Add(new Label { Text = "批次上限：6 視窗（預設維持 4 個啟用，第 5、6 個可自行開啟）", AutoSize = true, ForeColor = Color.LightSkyBlue, Padding = new Padding(14, 4, 0, 0) });
-        root.Controls.Add(options, 0, 3);
+        var footer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, Padding = new Padding(0, 2, 0, 0) };
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 145));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        footer.RowStyles.Add(new RowStyle(SizeType.Absolute, 23));
+        footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
-        var batch = MakeButton("依啟用 Slot 批次開啟", true); batch.Click += async (_, _) => await OpenManyAsync();
-        var launch = MakeButton("開啟單一視窗", false); launch.Click += (_, _) => LaunchOne();
-        var add = MakeButton("新增 Slot", false); add.Click += (_, _) => AddSlot();
-        var remove = MakeButton("刪除選取 Slot", false); remove.Click += (_, _) => RemoveSelectedSlot();
-        var favorites = MakeButton("收藏管理", false); favorites.Click += (_, _) => new FavoritesForm(_state, _store, url => new BrowserForm(_state, _store, url).Show()).Show(this);
-        actions.Controls.Add(batch); actions.Controls.Add(launch); actions.Controls.Add(add); actions.Controls.Add(remove); actions.Controls.Add(favorites);
-        root.Controls.Add(actions, 0, 4);
+        var all = MakeButton("全部開啟", 132, 30);
+        all.Click += async (_, _) => await OpenAllAsync();
+        footer.Controls.Add(all, 0, 0);
+        _countLabel.Dock = DockStyle.Fill;
+        footer.Controls.Add(_countLabel, 1, 0);
+
+        var isolation = new Label
+        {
+            Text = "同組 6 個視窗共用登入；A／B／C 三組資料互相隔離。",
+            Dock = DockStyle.Fill,
+            ForeColor = Color.Gray,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+        footer.Controls.Add(isolation, 0, 1);
+        footer.SetColumnSpan(isolation, 2);
+
+        var merchantNote = new Label
+        {
+            Text = "※ 第七個（A7、B7、C7）為商人擺攤專用，勾選後會隨該組開啟。",
+            Dock = DockStyle.Fill,
+            ForeColor = Color.Gray,
+            TextAlign = ContentAlignment.TopLeft
+        };
+        footer.Controls.Add(merchantNote, 0, 2);
+        footer.SetColumnSpan(merchantNote, 2);
+        root.Controls.Add(footer, 0, 3);
         Controls.Add(root);
     }
 
-    private void ConfigureGrid()
+    private Control BuildGroupRow(int group)
     {
-        _slotGrid.Dock = DockStyle.Fill;
-        _slotGrid.BackgroundColor = Color.FromArgb(34, 37, 43);
-        _slotGrid.ForeColor = Color.Black;
-        _slotGrid.AllowUserToAddRows = false; _slotGrid.AllowUserToDeleteRows = false;
-        _slotGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-        _slotGrid.SelectionMode = DataGridViewSelectionMode.FullRowSelect; _slotGrid.MultiSelect = false;
-        _slotGrid.RowHeadersVisible = false;
-        _slotGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Enabled", HeaderText = "啟用", FillWeight = 45 });
-        _slotGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Group", HeaderText = "群組", FillWeight = 55 });
-        _slotGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Number", HeaderText = "Slot", FillWeight = 45 });
-        _slotGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Url", HeaderText = "此 Slot 網址", FillWeight = 220 });
-        _slotGrid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "IsStallSlot", HeaderText = "擺攤 Slot", FillWeight = 65 });
-        _slotGrid.Columns.Add(new DataGridViewTextBoxColumn { Name = "StallSlotNumber", HeaderText = "擺攤編號", FillWeight = 65 });
-        _slotGrid.CurrentCellDirtyStateChanged += (_, _) => { if (_slotGrid.IsCurrentCellDirty) _slotGrid.CommitEdit(DataGridViewDataErrorContexts.Commit); };
-        _slotGrid.DataError += (_, e) => { e.ThrowException = false; };
-    }
-
-    private void LoadSlots()
-    {
-        _slotGrid.Rows.Clear();
-        foreach (var slot in _state.Settings.Slots.OrderBy(x => x.Group).ThenBy(x => x.Number))
-            _slotGrid.Rows.Add(slot.Enabled, slot.Group, slot.Number, string.IsNullOrWhiteSpace(slot.Url) ? _state.Settings.StartUrl : slot.Url, slot.IsStallSlot, slot.StallSlotNumber);
-    }
-
-    private void CaptureSlots()
-    {
-        var slots = new List<SlotInfo>();
-        foreach (DataGridViewRow row in _slotGrid.Rows)
+        int index = group - 1;
+        var outer = new TableLayoutPanel
         {
-            if (row.IsNewRow) continue;
-            if (!int.TryParse(Convert.ToString(row.Cells["Group"].Value), out int group) || group < 1)
-                throw new InvalidOperationException("群組必須是大於 0 的整數。");
-            if (!int.TryParse(Convert.ToString(row.Cells["Number"].Value), out int number) || number < 1)
-                throw new InvalidOperationException("Slot 編號必須是大於 0 的整數。");
-            var url = Convert.ToString(row.Cells["Url"].Value)?.Trim() ?? "";
-            if (string.IsNullOrWhiteSpace(url)) url = _startUrl.Text.Trim();
-            slots.Add(new SlotInfo
-            {
-                Group = group, Number = number,
-                Enabled = Convert.ToBoolean(row.Cells["Enabled"].Value ?? false),
-                Url = NormalizeUrl(url),
-                IsStallSlot = Convert.ToBoolean(row.Cells["IsStallSlot"].Value ?? false),
-                StallSlotNumber = int.TryParse(Convert.ToString(row.Cells["StallSlotNumber"].Value), out int stall) ? stall : 0
-            });
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Padding = new Padding(0, 1, 0, 1),
+            Margin = new Padding(0)
+        };
+        outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        outer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var merchant = new CheckBox
+        {
+            Text = $"{GroupNames[index]} 組開啟第 7 個商人視窗",
+            AutoSize = true,
+            Margin = new Padding(2, 2, 0, 0),
+            Checked = FindSlot(group, 7).Enabled
+        };
+        merchant.CheckedChanged += (_, _) =>
+        {
+            var stall = FindSlot(group, 7);
+            stall.Enabled = merchant.Checked;
+            SaveSettings();
+            UpdateCount();
+        };
+        _merchantChecks[index] = merchant;
+        outer.Controls.Add(merchant, 0, 0);
+
+        var row = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Margin = new Padding(0) };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 35));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 78));
+        row.Controls.Add(new Label { Text = GroupNames[index] + " 組", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter }, 0, 0);
+
+        var slots = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = new Padding(0),
+            Padding = new Padding(0),
+            AutoScroll = false
+        };
+        for (int number = 1; number <= 6; number++)
+        {
+            int slotNumber = number;
+            var button = MakeButton($"{GroupNames[index]}{number}\n未開啟", 65, 50);
+            button.Margin = new Padding(1, 1, 1, 1);
+            button.Click += (_, _) => OpenSingle(group, slotNumber);
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("編輯帳號名稱…", null, (_, _) => RenameSlot(group, slotNumber));
+            menu.Items.Add("清除帳號名稱", null, (_, _) => { FindSlot(group, slotNumber).DisplayName = ""; SaveSettings(); RefreshButtons(); });
+            button.ContextMenuStrip = menu;
+            _slotButtons[index, number - 1] = button;
+            slots.Controls.Add(button);
         }
-        var duplicate = slots.GroupBy(x => x.SlotId).FirstOrDefault(g => g.Count() > 1);
-        if (duplicate is not null) throw new InvalidOperationException($"群組 {duplicate.First().Group} 的 Slot {duplicate.First().Number} 重複。");
-        _state.Settings.Slots = slots;
+        row.Controls.Add(slots, 1, 0);
+
+        var openGroup = MakeButton($"開啟 {GroupNames[index]} 組", 74, 32);
+        openGroup.Click += async (_, _) => await OpenGroupAsync(group);
+        _groupButtons[index] = openGroup;
+        row.Controls.Add(openGroup, 2, 0);
+        outer.Controls.Add(row, 0, 1);
+        return outer;
     }
 
-    private void Persist()
-    {
-        CaptureSlots();
-        _state.Settings.StartUrl = NormalizeUrl(_startUrl.Text);
-        _state.Settings.BlockPopups = _blockPopups.Checked;
-        _state.Settings.AskBeforeDownload = _askDownloads.Checked;
-        _state.Settings.BatchWindowLimit = 6;
-        _state.Settings.OpenFifthWindow = _state.Settings.Slots.Any(x => x.Group == 1 && x.Number == 5 && x.Enabled);
-        _store.Save(_state);
-    }
+    private SlotInfo FindSlot(int group, int number) => _state.Settings.Slots.First(x => x.Group == group && x.Number == number);
 
-    private void LaunchOne()
-    {
-        try { Persist(); new BrowserForm(_state, _store, _state.Settings.StartUrl).Show(); }
-        catch (Exception ex) { MessageBox.Show(ex.Message, "設定錯誤", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
-    }
-
-    private async Task OpenManyAsync()
+    private void OpenSingle(int group, int number)
     {
         try
         {
-            Persist();
-            var limit = Math.Clamp(_state.Settings.BatchWindowLimit, 1, 6);
-            var selected = _state.Settings.Slots.Where(x => x.Enabled)
-                .OrderBy(x => x.Group).ThenBy(x => x.Number).Take(limit).ToList();
-            if (selected.Count == 0)
+            PersistSettings();
+            var slot = FindSlot(group, number);
+            var key = slot.SlotId;
+            if (_openForms.TryGetValue(key, out var existing) && !existing.IsDisposed)
             {
-                MessageBox.Show("目前沒有啟用的 Slot。請先在清單勾選要開啟的 Slot。", "批次開啟", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                existing.WindowState = FormWindowState.Normal;
+                existing.Activate();
                 return;
             }
-            foreach (var slot in selected)
-            {
-                var url = string.IsNullOrWhiteSpace(slot.Url) ? _state.Settings.StartUrl : slot.Url;
-                new BrowserForm(_state, _store, url).Show();
-                await Task.Delay(180);
-            }
-            int ignored = _state.Settings.Slots.Count(x => x.Enabled) - selected.Count;
-            if (ignored > 0) MessageBox.Show($"本次已開啟前 {limit} 個啟用 Slot；另有 {ignored} 個啟用 Slot 未開啟。", "批次開啟上限", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            var url = string.IsNullOrWhiteSpace(slot.Url) ? _state.Settings.StartUrl : slot.Url;
+            var browser = new BrowserForm(_state, _store, url, group);
+            _openForms[key] = browser;
+            browser.FormClosed += (_, _) => { _openForms.Remove(key); RefreshButtons(); };
+            browser.Show();
+            RefreshButtons();
         }
-        catch (Exception ex) { MessageBox.Show(ex.Message, "批次開啟失敗", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        catch (Exception ex) { MessageBox.Show(this, ex.Message, "開啟視窗失敗", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
     }
 
-    private void AddSlot()
+    private async Task OpenGroupAsync(int group)
     {
-        var current = _slotGrid.Rows.Cast<DataGridViewRow>().Where(r => !r.IsNewRow).ToList();
-        int group = current.Count == 0 ? 1 : current.Select(r => int.TryParse(Convert.ToString(r.Cells["Group"].Value), out int g) ? g : 1).Max();
-        int next = current.Where(r => Convert.ToInt32(r.Cells["Group"].Value) == group).Select(r => Convert.ToInt32(r.Cells["Number"].Value)).DefaultIfEmpty(0).Max() + 1;
-        _slotGrid.Rows.Add(false, group, next, _startUrl.Text.Trim(), false, 0);
+        PersistSettings();
+        for (int number = 1; number <= 6; number++)
+        {
+            OpenSingle(group, number);
+            await Task.Delay(160);
+        }
+        if (FindSlot(group, 7).Enabled)
+        {
+            OpenSingle(group, 7);
+            await Task.Delay(160);
+        }
+        UpdateCount();
     }
 
-    private void RemoveSelectedSlot()
+    private async Task OpenAllAsync()
     {
-        if (_slotGrid.CurrentRow is { IsNewRow: false } row) _slotGrid.Rows.Remove(row);
+        PersistSettings();
+        for (int group = 1; group <= 3; group++)
+        {
+            for (int number = 1; number <= 6; number++)
+            {
+                OpenSingle(group, number);
+                await Task.Delay(160);
+            }
+            if (FindSlot(group, 7).Enabled)
+            {
+                OpenSingle(group, 7);
+                await Task.Delay(160);
+            }
+        }
+        UpdateCount();
     }
 
-    private static string NormalizeUrl(string value)
+    private void RenameSlot(int group, int number)
     {
-        if (UrlHelper.TryNormalize(value, out var uri) && uri is not null) return uri.ToString();
-        throw new InvalidOperationException($"網址格式不正確：{value}");
+        var slot = FindSlot(group, number);
+        using var dialog = new Form { Text = $"編輯 {GroupNames[group - 1]}{number} 帳號名稱", FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, ClientSize = new Size(300, 105), MaximizeBox = false, MinimizeBox = false };
+        var input = new TextBox { Left = 12, Top = 12, Width = 276, Text = slot.DisplayName };
+        var ok = new Button { Text = "確定", Left = 132, Top = 55, Width = 72, DialogResult = DialogResult.OK };
+        var cancel = new Button { Text = "取消", Left = 212, Top = 55, Width = 72, DialogResult = DialogResult.Cancel };
+        dialog.Controls.AddRange([input, ok, cancel]);
+        dialog.AcceptButton = ok; dialog.CancelButton = cancel;
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+        {
+            slot.DisplayName = input.Text.Trim();
+            SaveSettings();
+            RefreshButtons();
+        }
     }
 
-    private static Button MakeButton(string text, bool primary) => new()
+    private void RefreshButtons()
     {
-        Text = text, AutoSize = true, Height = 34, FlatStyle = FlatStyle.Flat,
-        BackColor = primary ? Color.FromArgb(65, 110, 190) : Color.FromArgb(55, 59, 67),
-        ForeColor = Color.White, Margin = new Padding(4)
+        for (int group = 1; group <= 3; group++)
+        for (int number = 1; number <= 6; number++)
+        {
+            var slot = FindSlot(group, number);
+            bool opened = _openForms.TryGetValue(slot.SlotId, out var form) && !form.IsDisposed;
+            var label = string.IsNullOrWhiteSpace(slot.DisplayName) ? (opened ? "已開啟" : "未開啟") : slot.DisplayName;
+            _slotButtons[group - 1, number - 1].Text = $"{GroupNames[group - 1]}{number}\n{label}";
+        }
+        UpdateCount();
+    }
+
+    private void UpdateCount()
+    {
+        int total = 18 + _state.Settings.Slots.Count(x => x.Number == 7 && x.Enabled);
+        int opened = _openForms.Count(x => !x.Value.IsDisposed);
+        _countLabel.Text = $"全部開啟（{total} 個視窗）　目前已開啟 {opened} 個";
+    }
+
+    private void PersistSettings()
+    {
+        _state.Settings.BatchWindowLimit = 21;
+        SaveSettings();
+    }
+
+    private void SaveSettings()
+    {
+        _state.Settings.EnsureThreeGroupsSevenSlots();
+        _store.Save(_state);
+    }
+
+    private static Button MakeButton(string text, int width, int height) => new()
+    {
+        Text = text,
+        Width = width,
+        Height = height,
+        FlatStyle = FlatStyle.Standard,
+        BackColor = SystemColors.Control,
+        ForeColor = SystemColors.ControlText,
+        Font = new Font("Microsoft JhengHei UI", 9F),
+        TextAlign = ContentAlignment.MiddleCenter,
+        UseVisualStyleBackColor = true
     };
 }
