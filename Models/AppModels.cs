@@ -86,7 +86,7 @@ public sealed class AppSettings
                 if (existing.DisplayName is "預設無關" or "老鷹" or "封天" or "豐珠" or "魔丸" or "商人擺攤")
                     existing.DisplayName = "";
             }
-            existing.CharacterName ??= "";
+            existing!.CharacterName ??= "";
         }
         Slots = Slots.Where(x => x.Group >= 1 && x.Group <= 3 && x.Number >= 1 && x.Number <= 7)
             .OrderBy(x => x.Group).ThenBy(x => x.Number).ToList();
