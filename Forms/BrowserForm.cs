@@ -145,13 +145,13 @@ public sealed class BrowserForm : Form
 
         const string script = @"(() => {
             const text = document.body && document.body.innerText ? document.body.innerText : '';
-            const lines = text.split(/\\r?\\n/).map(x => x.trim()).filter(Boolean);
-            const index = lines.findIndex(x => /Base\\s*Lv/i.test(x));
+            const lines = text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+            const index = lines.findIndex(x => /Base\s*Lv/i.test(x));
             if (index < 0) return '';
             const candidates = [lines[index - 1], lines[index + 1], lines[index + 2], lines[index + 3]];
             for (const value of candidates) {
                 if (!value) continue;
-                if (/Base\\s*Lv|Job\\s*Lv|Class|職業|等級|\\d+\\s*\\/?\\s*\\d*/i.test(value)) continue;
+                if (/Base\s*Lv|Job\s*Lv|Class|職業|等級|\d+\s*\/?\s*\d*/i.test(value)) continue;
                 if (value.length > 24) continue;
                 return value;
             }
