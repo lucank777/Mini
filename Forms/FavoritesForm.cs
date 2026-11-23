@@ -16,10 +16,10 @@ public sealed class FavoritesForm : Form
         Text = "收藏管理"; Width = 720; Height = 480; StartPosition = FormStartPosition.CenterParent;
         _list.Columns.Add("名稱", 220); _list.Columns.Add("網址", 440);
         var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, Padding = new Padding(6) };
-        var open = Button("開啟選取"); open.Click += (_, _) => OpenSelected();
+        var openButton = Button("開啟選取"); openButton.Click += (_, _) => OpenSelected();
         var remove = Button("刪除選取"); remove.Click += (_, _) => DeleteSelected();
         var reload = Button("重新載入"); reload.Click += (_, _) => ReloadList();
-        bar.Controls.AddRange([open, remove, reload]);
+        bar.Controls.AddRange([openButton, remove, reload]);
         Controls.Add(_list); Controls.Add(bar);
         _list.DoubleClick += (_, _) => OpenSelected();
         ReloadList();
