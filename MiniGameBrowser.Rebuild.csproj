@@ -11,7 +11,11 @@
     <RootNamespace>MiniGameBrowser</RootNamespace>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
-    <PublishAot>true</PublishAot>
+    <!-- WinForms trimming is not supported; use a self-contained single-file publish instead of Native AOT. -->
+    <PublishAot>false</PublishAot>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <SelfContained>true</SelfContained>
     <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
