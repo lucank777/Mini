@@ -330,8 +330,13 @@ public sealed class LauncherForm : Form
 
     private sealed class SlotButton : Button
     {
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public string SlotTitle { get; set; } = "";
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public string StatusText { get; set; } = "未開啟";
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public bool CharacterDetected { get; set; }
 
         protected override void OnPaint(PaintEventArgs e)
