@@ -144,31 +144,45 @@ public sealed class BrowserForm : Form
         }
 
         const string script = @"(() => {
-            // RO Idle's document title includes the character name in brackets:
-            // [夜火] 初學者 Lv 9 / Job 7
-            const title = document.title || '';
-            const titleMatch = title.match(/^\s*\[([^\]]{1,20})\]/);
-            if (titleMatch) return titleMatch[1].trim();
+            // Read the first bold name value inside the right-side panel headed '角色'.
+            // Do not read navigation tabs such as '人物' or the grey job label below the name.
+            const headings = [...document.querySelectorAll('body *')]
+                .filter(el => el.children.length === 0 && (el.textContent || '').trim() === '角色');
 
-            // Fallback: read the name immediately after the right-side character panel heading.
-            const lines = (document.body?.innerText || '')
-                .split(/\r?\n/)
-                .map(x => x.replace(/\s+/g, ' ').trim())
-                .filter(Boolean);
-            const heading = lines.findIndex(x => /^角色$/.test(x));
-            if (heading < 0) return '';
+            for (const heading of headings) {
+                let panel = heading.parentElement;
+                for (let level = 0; panel && level < 5; level++, panel = panel.parentElement) {
+                    const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
+                    let node;
+                    let afterHeading = false;
+                    while ((node = walker.nextNode())) {
+                        const value = (node.nodeValue || '').replace(/\s+/g, ' ').trim();
+                        if (!value) continue;
+                        const parent = node.parentElement;
+                        if (!parent) continue;
+                        if (heading === parent || heading.contains(parent)) {
+                            afterHeading = true;
+                            continue;
+                        }
+                        if (!afterHeading) {
+                            const relation = heading.compareDocumentPosition(parent);
+                            if (relation & Node.DOCUMENT_POSITION_FOLLOWING) afterHeading = true;
+                        }
+                        if (!afterHeading || value.length > 20 ||
+                            /^(人物|角色|職業|初學者|劍士|法師|弓箭手|盜賊|服事|商人|Base\s*Lv\.?|Job\s*Lv\.?|HP|SP)$/i.test(value) ||
+                            /^[\d\s.,/%:-]+$/.test(value)) continue;
 
-            for (let i = heading + 1; i < Math.min(lines.length, heading + 4); i++) {
-                const value = lines[i];
-                if (/^(?:Base\s*Lv\.?|Job\s*Lv\.?|HP|SP)$/i.test(value)) break;
-                if (value.length >= 1 && value.length <= 20 &&
-                    !/^[\d\s.,/%:-]+$/.test(value) &&
-                    !/^(人物|職業|初學者|劍士|法師|弓箭手|盜賊|服事|商人)$/.test(value)) {
-                    return value;
+                        const style = getComputedStyle(parent);
+                        const weight = Number.parseInt(style.fontWeight, 10) || 400;
+                        if (weight >= 600 && Number.parseFloat(style.fontSize) >= 14) return value;
+                    }
                 }
             }
-            return '';
-        })();";
+
+            // Last-resort fallback: the game's title uses [character] before the job.
+            const titleMatch = (document.title || '').match(/^\s*\[([^\]]{1,20})\]/);
+            return titleMatch ? titleMatch[1].trim() : '';
+        })();
 
         try
         {
