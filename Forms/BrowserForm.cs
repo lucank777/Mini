@@ -34,7 +34,7 @@ public sealed class BrowserForm : Form
         _slotNumber = Math.Clamp(slotNumber, 1, 7);
         _onCharacterName = onCharacterName;
         _state = state; _store = store;
-        Text = $"極簡遊戲瀏覽器 - {_group} 組"; Width = 1180; Height = 800; MinimumSize = new Size(720, 480);
+        Text = $"[{GetSlotLabel()}] 極簡遊戲瀏覽器"; Width = 1180; Height = 800; MinimumSize = new Size(720, 480);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(25, 27, 31); ForeColor = Color.White;
         BuildToolbar();
@@ -209,13 +209,20 @@ public sealed class BrowserForm : Form
         if (_ready && _web.CoreWebView2.Source is string src) _address.Text = src;
     }
 
+    private string GetSlotLabel()
+    {
+        var groupLabel = (char)('A' + _group - 1);
+        return $"{groupLabel}{_slotNumber}";
+    }
+
     private void UpdateAddressAndTitle()
     {
         SyncAddressBar();
         if (_ready)
         {
             var title = _web.CoreWebView2.DocumentTitle;
-            Text = string.IsNullOrWhiteSpace(title) ? "MiniGameBrowser" : title + " — MiniGameBrowser";
+            var windowTitle = string.IsNullOrWhiteSpace(title) ? "RO放置仙境" : title.Trim();
+            Text = $"[{GetSlotLabel()}] {windowTitle} — MiniGameBrowser";
             _state.Settings.SelectedUrl = _web.CoreWebView2.Source;
             _store.Save(_state);
         }
