@@ -143,9 +143,9 @@ public sealed class BrowserForm : Form
             return;
         }
 
-        const string script = @"(() => {
-            // Read the first bold name value inside the right-side panel headed '角色'.
-            // Do not read navigation tabs such as '人物' or the grey job label below the name.
+        const string script = """
+(() => {
+            // Read the character name from the right-side character panel, not the navigation tab or job label.
             const headings = [...document.querySelectorAll('body *')]
                 .filter(el => el.children.length === 0 && (el.textContent || '').trim() === '角色');
 
@@ -156,7 +156,7 @@ public sealed class BrowserForm : Form
                     let node;
                     let afterHeading = false;
                     while ((node = walker.nextNode())) {
-                        const value = (node.nodeValue || '').replace(/\s+/g, ' ').trim();
+                        const value = (node.nodeValue || '').replace(/\\s+/g, ' ').trim();
                         if (!value) continue;
                         const parent = node.parentElement;
                         if (!parent) continue;
@@ -169,8 +169,8 @@ public sealed class BrowserForm : Form
                             if (relation & Node.DOCUMENT_POSITION_FOLLOWING) afterHeading = true;
                         }
                         if (!afterHeading || value.length > 20 ||
-                            /^(人物|角色|職業|初學者|劍士|法師|弓箭手|盜賊|服事|商人|Base\s*Lv\.?|Job\s*Lv\.?|HP|SP)$/i.test(value) ||
-                            /^[\d\s.,/%:-]+$/.test(value)) continue;
+                            /^(人物|角色|職業|初學者|劍士|法師|弓箭手|盜賊|服事|商人|Base\\s*Lv\\.?|Job\\s*Lv\\.?|HP|SP)$/i.test(value) ||
+                            /^[\\d\\s.,/%:-]+$/.test(value)) continue;
 
                         const style = getComputedStyle(parent);
                         const weight = Number.parseInt(style.fontWeight, 10) || 400;
@@ -179,10 +179,10 @@ public sealed class BrowserForm : Form
                 }
             }
 
-            // Last-resort fallback: the game's title uses [character] before the job.
-            const titleMatch = (document.title || '').match(/^\s*\[([^\]]{1,20})\]/);
+            const titleMatch = (document.title || '').match(/^\\s*\\[([^\\]]{1,20})\\]/);
             return titleMatch ? titleMatch[1].trim() : '';
         })();
+""";
 
         try
         {
