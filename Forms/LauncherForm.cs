@@ -72,7 +72,7 @@ public sealed class LauncherForm : Form
 
         var isolation = new Label
         {
-            Text = "每個帳號視窗使用獨立登入資料；A／B／C 三組互相隔離。",
+            Text = "同組視窗共用登入資料；A／B／C 三組各自獨立。",
             Dock = DockStyle.Fill,
             ForeColor = Color.Gray,
             TextAlign = ContentAlignment.MiddleLeft
