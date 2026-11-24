@@ -165,7 +165,7 @@ public sealed class BrowserForm : Form
                 return value;
             }
             return '';
-        })();
+        })();";
 
         try
         {
