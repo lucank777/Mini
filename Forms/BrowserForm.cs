@@ -144,28 +144,31 @@ public sealed class BrowserForm : Form
         }
 
         const string script = @"(() => {
-            const root = document.body;
-            if (!root) return '';
-            const lines = (root.innerText || '')
+            // RO Idle's document title includes the character name in brackets:
+            // [夜火] 初學者 Lv 9 / Job 7
+            const title = document.title || '';
+            const titleMatch = title.match(/^\s*\[([^\]]{1,20})\]/);
+            if (titleMatch) return titleMatch[1].trim();
+
+            // Fallback: read the name immediately after the right-side character panel heading.
+            const lines = (document.body?.innerText || '')
                 .split(/\r?\n/)
                 .map(x => x.replace(/\s+/g, ' ').trim())
                 .filter(Boolean);
-
-            // RO Idle's right-side character panel is headed by the standalone label '角色'.
-            // The first short text line after it is the character name; the next line is the job/class.
             const heading = lines.findIndex(x => /^角色$/.test(x));
             if (heading < 0) return '';
 
-            for (let i = heading + 1; i < Math.min(lines.length, heading + 5); i++) {
+            for (let i = heading + 1; i < Math.min(lines.length, heading + 4); i++) {
                 const value = lines[i];
-                if (/^(?:Base\s*Lv\.?|Job\s*Lv\.?|HP|SP|角色|職業|等級)$/i.test(value)) break;
-                if (/Base\s*Lv|Job\s*Lv|\b(?:HP|SP)\b|職業|等級/i.test(value)) continue;
-                if (value.length < 1 || value.length > 20) continue;
-                if (/^[\d\s.,/%:-]+$/.test(value)) continue;
-                return value;
+                if (/^(?:Base\s*Lv\.?|Job\s*Lv\.?|HP|SP)$/i.test(value)) break;
+                if (value.length >= 1 && value.length <= 20 &&
+                    !/^[\d\s.,/%:-]+$/.test(value) &&
+                    !/^(人物|職業|初學者|劍士|法師|弓箭手|盜賊|服事|商人)$/.test(value)) {
+                    return value;
+                }
             }
             return '';
-        })();";
+        })();
 
         try
         {
