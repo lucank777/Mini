@@ -147,26 +147,25 @@ public sealed class BrowserForm : Form
             const root = document.body;
             if (!root) return '';
             const lines = (root.innerText || '')
-                .split(/\\r?\\n/)
-                .map(x => x.replace(/\\s+/g, ' ').trim())
+                .split(/\r?\n/)
+                .map(x => x.replace(/\s+/g, ' ').trim())
                 .filter(Boolean);
 
             // RO Idle's right-side character panel is headed by the standalone label '角色'.
-            // In that panel, the character name is the first short text line after the heading;
-            // the following line is the job/class (e.g. 劍士), so never use the job as the name.
+            // The first short text line after it is the character name; the next line is the job/class.
             const heading = lines.findIndex(x => /^角色$/.test(x));
             if (heading < 0) return '';
 
             for (let i = heading + 1; i < Math.min(lines.length, heading + 5); i++) {
                 const value = lines[i];
-                if (/^(?:Base\\s*Lv\\.?|Job\\s*Lv\\.?|HP|SP|角色|職業|等級)$/i.test(value)) break;
-                if (/Base\\s*Lv|Job\\s*Lv|\\b(?:HP|SP)\\b|職業|等級/i.test(value)) continue;
+                if (/^(?:Base\s*Lv\.?|Job\s*Lv\.?|HP|SP|角色|職業|等級)$/i.test(value)) break;
+                if (/Base\s*Lv|Job\s*Lv|\b(?:HP|SP)\b|職業|等級/i.test(value)) continue;
                 if (value.length < 1 || value.length > 20) continue;
-                if (/^[\\d\\s.,/%:-]+$/.test(value)) continue;
+                if (/^[\d\s.,/%:-]+$/.test(value)) continue;
                 return value;
             }
             return '';
-        })();";
+        })();
 
         try
         {
