@@ -168,7 +168,7 @@ public sealed class BrowserForm : Form
                 }
             }
             return '';
-        })();
+        })();";
 
         try
         {
