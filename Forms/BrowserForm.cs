@@ -137,51 +137,49 @@ public sealed class BrowserForm : Form
             _characterTimer.Stop();
             return;
         }
-        if (++_characterChecks > 30)
-        {
-            _characterTimer.Stop();
-            return;
-        }
 
+        // Keep polling until a real character name is found. Login can take longer than 45 seconds.
         const string script = """
 (() => {
-            // Read the character name from the right-side character panel, not the navigation tab or job label.
-            const headings = [...document.querySelectorAll('body *')]
-                .filter(el => el.children.length === 0 && (el.textContent || '').trim() === '角色');
+    const visible = el => {
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && s.display !== 'none' &&
+               s.visibility !== 'hidden' && Number(s.opacity) !== 0;
+    };
+    const headings = [...document.querySelectorAll('body *')]
+        .filter(el => el.children.length === 0 && (el.textContent || '').trim() === '角色' && visible(el));
 
-            for (const heading of headings) {
-                let panel = heading.parentElement;
-                for (let level = 0; panel && level < 5; level++, panel = panel.parentElement) {
-                    const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
-                    let node;
-                    let afterHeading = false;
-                    while ((node = walker.nextNode())) {
-                        const value = (node.nodeValue || '').replace(/\\s+/g, ' ').trim();
-                        if (!value) continue;
-                        const parent = node.parentElement;
-                        if (!parent) continue;
-                        if (heading === parent || heading.contains(parent)) {
-                            afterHeading = true;
-                            continue;
-                        }
-                        if (!afterHeading) {
-                            const relation = heading.compareDocumentPosition(parent);
-                            if (relation & Node.DOCUMENT_POSITION_FOLLOWING) afterHeading = true;
-                        }
-                        if (!afterHeading || value.length > 20 ||
-                            /^(人物|角色|職業|初學者|劍士|法師|弓箭手|盜賊|服事|商人|Base\\s*Lv\\.?|Job\\s*Lv\\.?|HP|SP)$/i.test(value) ||
-                            /^[\\d\\s.,/%:-]+$/.test(value)) continue;
+    for (const heading of headings) {
+        const hr = heading.getBoundingClientRect();
+        let panel = heading.parentElement;
+        for (let level = 0; panel && level < 7; level++, panel = panel.parentElement) {
+            const panelText = panel.innerText || '';
+            if (!/Base\s*Lv/i.test(panelText) || !/Job\s*Lv/i.test(panelText)) continue;
 
-                        const style = getComputedStyle(parent);
-                        const weight = Number.parseInt(style.fontWeight, 10) || 400;
-                        if (weight >= 600 && Number.parseFloat(style.fontSize) >= 14) return value;
-                    }
-                }
+            const candidates = [];
+            const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
+            let node;
+            while ((node = walker.nextNode())) {
+                const value = (node.nodeValue || '').trim();
+                if (!value || value.length > 24) continue;
+                const el = node.parentElement;
+                if (!el || !visible(el) || heading.contains(el)) continue;
+                const rect = el.getBoundingClientRect();
+                if (rect.top < hr.bottom - 1) continue;
+                if (/^(人物|角色|職業|初學者|劍士|法師|弓箭手|盜賊|服事|商人|Base\s*Lv\.?|Job\s*Lv\.?|HP|SP)$/i.test(value)) continue;
+                if (/^[\d\s.,/%:-]+$/.test(value)) continue;
+                const style = getComputedStyle(el);
+                const weight = style.fontWeight === 'bold' ? 700 : (Number.parseInt(style.fontWeight, 10) || 400);
+                if (weight < 600 || Number.parseFloat(style.fontSize) < 13) continue;
+                candidates.push({ value, top: rect.top, left: rect.left });
             }
-
-            const titleMatch = (document.title || '').match(/^\\s*\\[([^\\]]{1,20})\\]/);
-            return titleMatch ? titleMatch[1].trim() : '';
-        })();
+            candidates.sort((x, y) => x.top - y.top || x.left - y.left);
+            if (candidates.length) return candidates[0].value;
+        }
+    }
+    return '';
+})();
 """;
 
         try
@@ -189,6 +187,7 @@ public sealed class BrowserForm : Form
             var raw = await _web.CoreWebView2.ExecuteScriptAsync(script);
             var name = JsonSerializer.Deserialize<string>(raw)?.Trim() ?? "";
             if (string.IsNullOrWhiteSpace(name)) return;
+
             _characterTimer.Stop();
             _onCharacterName?.Invoke(name);
         }
