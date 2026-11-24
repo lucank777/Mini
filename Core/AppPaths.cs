@@ -8,7 +8,7 @@ public static class AppPaths
     public static string FavoritesFile => Path.Combine(Root, "favorites.json");
     public static string WebViewDataFolder => Path.Combine(Root, "WebView2");
     public static string GetGroupWebViewDataFolder(int group) => Path.Combine(ProfilesRoot, $"Group-{group}");
-    public static string GetSlotWebViewDataFolder(int group, int slot) => Path.Combine(ProfilesRoot, $"Group-{group}", $"Slot-{slot}");
+    public static string GetSlotWebViewDataFolder(int group, int slot) => GetGroupWebViewDataFolder(group);
 
     public static void Initialize()
     {
