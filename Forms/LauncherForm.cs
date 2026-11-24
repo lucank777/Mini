@@ -3,14 +3,13 @@ using MiniGameBrowser.Models;
 
 namespace MiniGameBrowser.Forms;
 
-/// <summary>Original-style A/B/C launcher with six regular slots and one optional merchant slot per group.</summary>
+/// <summary>Original-style launcher: A/B/C groups, seven visible slots per group, optional merchant batch slot.</summary>
 public sealed class LauncherForm : Form
 {
     private readonly AppState _state;
     private readonly JsonStore _store;
+    private readonly Button[,] _slotButtons = new Button[3, 7];
     private readonly CheckBox[] _merchantChecks = new CheckBox[3];
-    private readonly Button[,] _slotButtons = new Button[3, 6];
-    private readonly Button[] _groupButtons = new Button[3];
     private readonly Label _countLabel = new() { AutoSize = true, ForeColor = Color.SteelBlue, TextAlign = ContentAlignment.MiddleLeft };
     private readonly Dictionary<string, Form> _openForms = new();
     private static readonly string[] GroupNames = ["A", "B", "C"];
@@ -73,7 +72,7 @@ public sealed class LauncherForm : Form
 
         var isolation = new Label
         {
-            Text = "同組 6 個視窗共用登入；A／B／C 三組資料互相隔離。",
+            Text = "同組視窗共用登入資料；A／B／C 三組各自獨立。",
             Dock = DockStyle.Fill,
             ForeColor = Color.Gray,
             TextAlign = ContentAlignment.MiddleLeft
@@ -83,7 +82,7 @@ public sealed class LauncherForm : Form
 
         var merchantNote = new Label
         {
-            Text = "※ 第七個（A7、B7、C7）為商人擺攤專用，勾選後會隨該組開啟。",
+            Text = "※ 第七個（A7、B7、C7）為商人擺攤專用；勾選後會隨該組批次開啟。",
             Dock = DockStyle.Fill,
             ForeColor = Color.Gray,
             TextAlign = ContentAlignment.TopLeft
@@ -117,8 +116,7 @@ public sealed class LauncherForm : Form
         };
         merchant.CheckedChanged += (_, _) =>
         {
-            var stall = FindSlot(group, 7);
-            stall.Enabled = merchant.Checked;
+            FindSlot(group, 7).Enabled = merchant.Checked;
             SaveSettings();
             UpdateCount();
         };
@@ -129,7 +127,15 @@ public sealed class LauncherForm : Form
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 35));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 78));
-        row.Controls.Add(new Label { Text = GroupNames[index] + " 組", Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter }, 0, 0);
+        row.Controls.Add(new Label
+        {
+            Text = GroupNames[index],
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleCenter,
+            AutoEllipsis = false,
+            Margin = new Padding(0),
+            Font = new Font("Microsoft JhengHei UI", 9F)
+        }, 0, 0);
 
         var slots = new FlowLayoutPanel
         {
@@ -140,15 +146,14 @@ public sealed class LauncherForm : Form
             Padding = new Padding(0),
             AutoScroll = false
         };
-        for (int number = 1; number <= 6; number++)
+        for (int number = 1; number <= 7; number++)
         {
             int slotNumber = number;
-            var button = MakeButton($"{GroupNames[index]}{number}\n未開啟", 65, 50);
-            button.Margin = new Padding(1, 1, 1, 1);
+            var button = new SlotButton { Width = 61, Height = 50, Margin = new Padding(1), SlotTitle = $"{GroupNames[index]}{number}" };
             button.Click += (_, _) => OpenSingle(group, slotNumber);
             var menu = new ContextMenuStrip();
             menu.Items.Add("編輯帳號名稱…", null, (_, _) => RenameSlot(group, slotNumber));
-            menu.Items.Add("清除帳號名稱", null, (_, _) => { FindSlot(group, slotNumber).DisplayName = ""; SaveSettings(); RefreshButtons(); });
+            menu.Items.Add("清除自訂名稱", null, (_, _) => { FindSlot(group, slotNumber).DisplayName = ""; SaveSettings(); RefreshButtons(); });
             button.ContextMenuStrip = menu;
             _slotButtons[index, number - 1] = button;
             slots.Controls.Add(button);
@@ -157,7 +162,6 @@ public sealed class LauncherForm : Form
 
         var openGroup = MakeButton($"開啟 {GroupNames[index]} 組", 74, 32);
         openGroup.Click += async (_, _) => await OpenGroupAsync(group);
-        _groupButtons[index] = openGroup;
         row.Controls.Add(openGroup, 2, 0);
         outer.Controls.Add(row, 0, 1);
         return outer;
@@ -179,13 +183,34 @@ public sealed class LauncherForm : Form
                 return;
             }
             var url = string.IsNullOrWhiteSpace(slot.Url) ? _state.Settings.StartUrl : slot.Url;
-            var browser = new BrowserForm(_state, _store, url, group);
+            var browser = new BrowserForm(_state, _store, url, group, number, name => UpdateCharacterName(group, number, name));
             _openForms[key] = browser;
-            browser.FormClosed += (_, _) => { _openForms.Remove(key); RefreshButtons(); };
+            browser.FormClosed += (_, _) =>
+            {
+                _openForms.Remove(key);
+                RefreshButtons();
+            };
             browser.Show();
             RefreshButtons();
         }
-        catch (Exception ex) { MessageBox.Show(this, ex.Message, "開啟視窗失敗", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "開啟視窗失敗", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    private void UpdateCharacterName(int group, int number, string name)
+    {
+        if (IsDisposed || !IsHandleCreated) return;
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() => UpdateCharacterName(group, number, name)));
+            return;
+        }
+        var slot = FindSlot(group, number);
+        slot.CharacterName = name;
+        SaveSettings();
+        RefreshButtons();
     }
 
     private async Task OpenGroupAsync(int group)
@@ -226,12 +251,21 @@ public sealed class LauncherForm : Form
     private void RenameSlot(int group, int number)
     {
         var slot = FindSlot(group, number);
-        using var dialog = new Form { Text = $"編輯 {GroupNames[group - 1]}{number} 帳號名稱", FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, ClientSize = new Size(300, 105), MaximizeBox = false, MinimizeBox = false };
+        using var dialog = new Form
+        {
+            Text = $"編輯 {GroupNames[group - 1]}{number} 帳號名稱",
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition = FormStartPosition.CenterParent,
+            ClientSize = new Size(300, 105),
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
         var input = new TextBox { Left = 12, Top = 12, Width = 276, Text = slot.DisplayName };
         var ok = new Button { Text = "確定", Left = 132, Top = 55, Width = 72, DialogResult = DialogResult.OK };
         var cancel = new Button { Text = "取消", Left = 212, Top = 55, Width = 72, DialogResult = DialogResult.Cancel };
         dialog.Controls.AddRange([input, ok, cancel]);
-        dialog.AcceptButton = ok; dialog.CancelButton = cancel;
+        dialog.AcceptButton = ok;
+        dialog.CancelButton = cancel;
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
             slot.DisplayName = input.Text.Trim();
@@ -243,12 +277,21 @@ public sealed class LauncherForm : Form
     private void RefreshButtons()
     {
         for (int group = 1; group <= 3; group++)
-        for (int number = 1; number <= 6; number++)
+        for (int number = 1; number <= 7; number++)
         {
             var slot = FindSlot(group, number);
             bool opened = _openForms.TryGetValue(slot.SlotId, out var form) && !form.IsDisposed;
-            var label = string.IsNullOrWhiteSpace(slot.DisplayName) ? (opened ? "已開啟" : "未開啟") : slot.DisplayName;
-            _slotButtons[group - 1, number - 1].Text = $"{GroupNames[group - 1]}{number}\n{label}";
+            var detected = opened ? slot.CharacterName : "";
+            var label = !string.IsNullOrWhiteSpace(detected)
+                ? detected
+                : !string.IsNullOrWhiteSpace(slot.DisplayName) ? slot.DisplayName
+                : opened ? "已開啟" : "未開啟";
+            if (_slotButtons[group - 1, number - 1] is SlotButton button)
+            {
+                button.StatusText = label;
+                button.CharacterDetected = !string.IsNullOrWhiteSpace(detected);
+                button.Invalidate();
+            }
         }
         UpdateCount();
     }
@@ -284,4 +327,36 @@ public sealed class LauncherForm : Form
         TextAlign = ContentAlignment.MiddleCenter,
         UseVisualStyleBackColor = true
     };
+
+    private sealed class SlotButton : Button
+    {
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public string SlotTitle { get; set; } = "";
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public string StatusText { get; set; } = "未開啟";
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public bool CharacterDetected { get; set; }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var state = !Enabled ? ButtonState.Inactive : Capture ? ButtonState.Pushed : ButtonState.Normal;
+            ControlPaint.DrawButton(e.Graphics, ClientRectangle, state);
+            var titleRect = new Rectangle(2, 5, ClientSize.Width - 4, 18);
+            var statusRect = new Rectangle(2, 24, ClientSize.Width - 4, ClientSize.Height - 26);
+            TextRenderer.DrawText(e.Graphics, SlotTitle, Font, titleRect, ForeColor,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            var statusFont = CharacterDetected ? new Font(Font, FontStyle.Bold) : Font;
+            try
+            {
+                TextRenderer.DrawText(e.Graphics, StatusText, statusFont, statusRect, ForeColor,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.WordBreak);
+            }
+            finally
+            {
+                if (CharacterDetected) statusFont.Dispose();
+            }
+        }
+    }
 }

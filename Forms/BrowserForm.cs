@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using MiniGameBrowser.Core;
@@ -22,12 +23,18 @@ public sealed class BrowserForm : Form
     private readonly Label _status = new() { AutoSize = false, Height = 22, Dock = DockStyle.Bottom, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(8, 0, 0, 0) };
     private bool _ready;
     private readonly int _group;
+    private readonly int _slotNumber;
+    private readonly Action<string>? _onCharacterName;
+    private readonly System.Windows.Forms.Timer _characterTimer = new() { Interval = 1500 };
+    private int _characterChecks;
 
-    public BrowserForm(AppState state, JsonStore store, string? startUrl = null, int group = 1)
+    public BrowserForm(AppState state, JsonStore store, string? startUrl = null, int group = 1, int slotNumber = 1, Action<string>? onCharacterName = null)
     {
         _group = Math.Clamp(group, 1, 3);
+        _slotNumber = Math.Clamp(slotNumber, 1, 7);
+        _onCharacterName = onCharacterName;
         _state = state; _store = store;
-        Text = $"極簡遊戲瀏覽器 - {_group} 組"; Width = 1180; Height = 800; MinimumSize = new Size(720, 480);
+        Text = $"[{GetSlotLabel()}] 極簡遊戲瀏覽器"; Width = 1180; Height = 800; MinimumSize = new Size(720, 480);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(25, 27, 31); ForeColor = Color.White;
         BuildToolbar();
@@ -35,7 +42,8 @@ public sealed class BrowserForm : Form
         _toolbar.Dock = DockStyle.Top;
         _address.Text = startUrl ?? _state.Settings.SelectedUrl;
         Shown += async (_, _) => await InitializeWebViewAsync();
-        FormClosing += (_, _) => SaveWindowState();
+        FormClosing += (_, _) => { _characterTimer.Stop(); _characterTimer.Dispose(); SaveWindowState(); };
+        _characterTimer.Tick += async (_, _) => await RefreshCharacterNameAsync();
     }
 
     private void BuildToolbar()
@@ -60,7 +68,7 @@ public sealed class BrowserForm : Form
     {
         try
         {
-            var env = await CoreWebView2Environment.CreateAsync(null, AppPaths.GetGroupWebViewDataFolder(_group));
+            var env = await CoreWebView2Environment.CreateAsync(null, AppPaths.GetSlotWebViewDataFolder(_group, _slotNumber));
             await _web.EnsureCoreWebView2Async(env);
             _ready = true;
             WebViewSecurity.Attach(_web.CoreWebView2);
@@ -70,6 +78,14 @@ public sealed class BrowserForm : Form
             {
                 _status.Text = e.IsSuccess ? "完成" : $"載入失敗：{e.WebErrorStatus}";
                 _back.Enabled = _web.CoreWebView2.CanGoBack; _forward.Enabled = _web.CoreWebView2.CanGoForward;
+                if (e.IsSuccess && IsTrustedCharacterPage())
+                {
+                    _characterChecks = 0;
+                    _characterTimer.Stop();
+                    _characterTimer.Start();
+                    _ = RefreshCharacterNameAsync();
+                }
+                else _characterTimer.Stop();
             };
             _web.CoreWebView2.NewWindowRequested += (_, e) =>
             {
@@ -104,6 +120,83 @@ public sealed class BrowserForm : Form
         }
     }
 
+
+    private bool IsTrustedCharacterPage()
+    {
+        if (!_ready || !Uri.TryCreate(_web.CoreWebView2.Source, UriKind.Absolute, out var uri))
+            return false;
+        return uri.Scheme == Uri.UriSchemeHttps
+            && uri.Host.Equals("ro-idle.app", StringComparison.OrdinalIgnoreCase)
+            && uri.IsDefaultPort;
+    }
+
+    private async Task RefreshCharacterNameAsync()
+    {
+        if (!_ready || IsDisposed || !IsTrustedCharacterPage())
+        {
+            _characterTimer.Stop();
+            return;
+        }
+
+        // Keep polling until a real character name is found. Login can take longer than 45 seconds.
+        const string script = """
+(() => {
+    const visible = el => {
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && s.display !== 'none' &&
+               s.visibility !== 'hidden' && Number(s.opacity) !== 0;
+    };
+    const headings = [...document.querySelectorAll('body *')]
+        .filter(el => el.children.length === 0 && (el.textContent || '').trim() === '角色' && visible(el));
+
+    for (const heading of headings) {
+        const hr = heading.getBoundingClientRect();
+        let panel = heading.parentElement;
+        for (let level = 0; panel && level < 7; level++, panel = panel.parentElement) {
+            const panelText = panel.innerText || '';
+            if (!/Base\s*Lv/i.test(panelText) || !/Job\s*Lv/i.test(panelText)) continue;
+
+            const candidates = [];
+            const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
+            let node;
+            while ((node = walker.nextNode())) {
+                const value = (node.nodeValue || '').trim();
+                if (!value || value.length > 24) continue;
+                const el = node.parentElement;
+                if (!el || !visible(el) || heading.contains(el)) continue;
+                const rect = el.getBoundingClientRect();
+                if (rect.top < hr.bottom - 1) continue;
+                if (/^(人物|角色|職業|初學者|劍士|法師|弓箭手|盜賊|服事|商人|Base\s*Lv\.?|Job\s*Lv\.?|HP|SP)$/i.test(value)) continue;
+                if (/^[\d\s.,/%:-]+$/.test(value)) continue;
+                const style = getComputedStyle(el);
+                const weight = style.fontWeight === 'bold' ? 700 : (Number.parseInt(style.fontWeight, 10) || 400);
+                if (weight < 600 || Number.parseFloat(style.fontSize) < 13) continue;
+                candidates.push({ value, top: rect.top, left: rect.left });
+            }
+            candidates.sort((x, y) => x.top - y.top || x.left - y.left);
+            if (candidates.length) return candidates[0].value;
+        }
+    }
+    return '';
+})();
+""";
+
+        try
+        {
+            var raw = await _web.CoreWebView2.ExecuteScriptAsync(script);
+            var name = JsonSerializer.Deserialize<string>(raw)?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(name)) return;
+
+            _characterTimer.Stop();
+            _onCharacterName?.Invoke(name);
+        }
+        catch
+        {
+            // The page may still be rendering; retry on the next timer tick.
+        }
+    }
+
     private void Navigate(string raw)
     {
         if (!UrlHelper.TryNormalize(raw, out var uri) || uri is null) { _status.Text = "網址或搜尋內容無效"; return; }
@@ -116,13 +209,20 @@ public sealed class BrowserForm : Form
         if (_ready && _web.CoreWebView2.Source is string src) _address.Text = src;
     }
 
+    private string GetSlotLabel()
+    {
+        var groupLabel = (char)('A' + _group - 1);
+        return $"{groupLabel}{_slotNumber}";
+    }
+
     private void UpdateAddressAndTitle()
     {
         SyncAddressBar();
         if (_ready)
         {
             var title = _web.CoreWebView2.DocumentTitle;
-            Text = string.IsNullOrWhiteSpace(title) ? "MiniGameBrowser" : title + " — MiniGameBrowser";
+            var windowTitle = string.IsNullOrWhiteSpace(title) ? "RO放置仙境" : title.Trim();
+            Text = $"[{GetSlotLabel()}] {windowTitle} — MiniGameBrowser";
             _state.Settings.SelectedUrl = _web.CoreWebView2.Source;
             _store.Save(_state);
         }

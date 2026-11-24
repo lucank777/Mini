@@ -3,6 +3,8 @@ name: Build Windows x64 Single File
 on:
   workflow_dispatch:
   push:
+    branches: [ '**' ]
+  pull_request:
     branches: [ main, master ]
 
 permissions:
